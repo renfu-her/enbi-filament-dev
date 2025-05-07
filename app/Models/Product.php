@@ -13,15 +13,10 @@ class Product extends Model
     protected $fillable = [
         'name',
         'description',
-        'price',
-        'stock',
-        'image',
         'is_active',
     ];
 
     protected $casts = [
-        'price' => 'decimal:2',
-        'stock' => 'integer',
         'is_active' => 'boolean',
     ];
 
@@ -33,5 +28,10 @@ class Product extends Model
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(ProductItem::class);
     }
 } 
