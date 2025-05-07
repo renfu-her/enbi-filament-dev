@@ -9,6 +9,13 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
+use Illuminate\Support\Facades\Storage;
+use Filament\Notifications\Notification;
+use Filament\Forms\Components\FileUpload;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class ProductResource extends Resource
 {
@@ -48,11 +55,44 @@ class ProductResource extends Resource
                             ->numeric()
                             ->default(0)
                             ->label('庫存'),
-                        Forms\Components\FileUpload::make('image')
+                        FileUpload::make('image')
+                            ->label('商品圖片')
                             ->image()
+                            ->imageEditor()
                             ->directory('products')
                             ->columnSpanFull()
-                            ->label('商品圖片'),
+                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+                            ->downloadable()
+                            ->openable()
+                            ->getUploadedFileNameForStorageUsing(
+                                fn($file): string => (string) str(Str::uuid7() . '.webp')
+                            )
+                            ->saveUploadedFileUsing(function ($file) {
+                                $manager = new ImageManager(new Driver());
+                                $image = $manager->read($file);
+                                
+                                // 計算新的尺寸，保持比例
+                                $width = $image->width();
+                                $height = $image->height();
+                                $ratio = min(1920 / $width, 1920 / $height);
+                                $newWidth = round($width * $ratio);
+                                $newHeight = round($height * $ratio);
+                                
+                                $image->resize($newWidth, $newHeight);
+                                $filename = Str::uuid7()->toString() . '.webp';
+
+                                if (!file_exists(storage_path('app/public/products'))) {
+                                    mkdir(storage_path('app/public/products'), 0755, true);
+                                }
+
+                                $image->toWebp(90)->save(storage_path('app/public/products/' . $filename));
+                                return 'products/' . $filename;
+                            })
+                            ->deleteUploadedFileUsing(function ($file) {
+                                if ($file) {
+                                    Storage::disk('public')->delete($file);
+                                }
+                            }),
                         Forms\Components\Toggle::make('is_active')
                             ->required()
                             ->inline(false)
@@ -114,5 +154,62 @@ class ProductResource extends Resource
             'create' => Pages\CreateProduct::route('/create'),
             'edit' => Pages\EditProduct::route('/{record}/edit'),
         ];
+    }
+
+    public static function afterSave(Model $record, array $data): void
+    {
+        if (isset($data['image'])) {
+            try {
+                $relativePath = 'public/products/' . basename($data['image']);
+                
+                // 檢查檔案是否存在
+                if (!Storage::exists($relativePath)) {
+                    throw new \Exception('找不到上傳的圖片檔案：' . $relativePath);
+                }
+                
+                // 讀取原始檔案
+                $originalContent = Storage::get($relativePath);
+                if (!$originalContent) {
+                    throw new \Exception('無法讀取上傳的圖片檔案');
+                }
+                
+                $manager = new ImageManager(new Driver());
+                $image = $manager->read($originalContent);
+                
+                // 計算新的尺寸，保持比例
+                $width = $image->width();
+                $height = $image->height();
+                $ratio = min(1920 / $width, 1920 / $height);
+                $newWidth = round($width * $ratio);
+                $newHeight = round($height * $ratio);
+                
+                // 調整圖片大小並轉換為 WebP
+                $webpContent = $image->resize($newWidth, $newHeight)
+                                   ->toWebp(90)
+                                   ->toString();
+                
+                // 儲存 WebP 檔案
+                $newPath = 'products/' . basename($data['image']) . '.webp';
+                Storage::put('public/' . $newPath, $webpContent);
+                
+                // 更新記錄
+                $record->image = $newPath;
+                $record->save();
+                
+                // 刪除原始檔案
+                Storage::delete($relativePath);
+                
+                Notification::make()
+                    ->title('圖片處理成功')
+                    ->success()
+                    ->send();
+            } catch (\Exception $e) {
+                Notification::make()
+                    ->title('圖片處理失敗')
+                    ->body($e->getMessage())
+                    ->danger()
+                    ->send();
+            }
+        }
     }
 } 
