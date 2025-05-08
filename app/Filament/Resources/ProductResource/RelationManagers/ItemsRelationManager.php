@@ -17,7 +17,18 @@ class ItemsRelationManager extends RelationManager
     protected static string $relationship = 'items';
 
     protected static ?string $recordTitleAttribute = 'name';
+  
+    protected static ?string $title = '商品規格';
 
+    protected static ?string $navigationGroup = '商品管理';
+
+    protected static ?string $modelLabel = '商品規格';
+
+    protected static ?string $pluralModelLabel = '商品規格';
+
+    protected static ?string $navigationIcon = 'heroicon-o-tag';
+
+    
     public function form(Form $form): Form
     {
         return $form

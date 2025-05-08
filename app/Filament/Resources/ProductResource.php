@@ -44,6 +44,7 @@ class ProductResource extends Resource
                             ->maxLength(255)
                             ->label('商品名稱'),
                         Forms\Components\RichEditor::make('description')
+                            ->required()
                             ->label('商品描述')
                             ->columnSpanFull(),
                         FileUpload::make('image')
